@@ -104,7 +104,12 @@ export function MobileNav({
   }, [])
 
   const visibleItems = React.useMemo(
-    () => items.filter((item) => item.href !== "/management" || isAdmin),
+    () =>
+      items.filter(
+        (item) =>
+          (item.href !== "/management" || isAdmin) &&
+          (item.href !== "/watchlist" || !isAdmin)
+      ),
     [isAdmin, items]
   )
 
@@ -157,7 +162,16 @@ export function MobileNav({
                 Home
               </MobileLink>
               {visibleItems.map((item, index) => (
-                <MobileLink key={index} href={item.href} onOpenChange={setOpen}>
+                <MobileLink
+                  key={index}
+                  href={item.href}
+                  onOpenChange={setOpen}
+                  className={
+                    item.href === "/start-plan"
+                      ? "rounded-lg border border-primary/50 bg-primary/10 px-3 py-2 text-primary"
+                      : undefined
+                  }
+                >
                   {item.label}
                 </MobileLink>
               ))}

@@ -328,6 +328,10 @@ export function CategoryResultsGrid({ items }: { items: CategoryResultItem[] }) 
                   {watchlistMessage ? <p className="text-xs text-muted-foreground">{watchlistMessage}</p> : null}
 
                   <div className="flex flex-wrap items-center gap-3 pt-1">
+                    <Button asChild size="sm" variant="secondary">
+                      <a href="/start-plan">Start Plan</a>
+                    </Button>
+
                     {current.trailerUrl ? (
                       <Button asChild size="sm" variant="outline">
                         <a href={current.trailerUrl} target="_blank" rel="noreferrer">

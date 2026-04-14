@@ -48,7 +48,12 @@ export function MainNav({
   }, [])
 
   const visibleItems = useMemo(
-    () => items.filter((item) => item.href !== "/management" || isAdmin),
+    () =>
+      items.filter(
+        (item) =>
+          (item.href !== "/management" || isAdmin) &&
+          (item.href !== "/watchlist" || !isAdmin)
+      ),
     [isAdmin, items]
   )
 
@@ -66,7 +71,11 @@ export function MainNav({
             href={item.href}
             data-active={pathname === item.href}
             data-new={PAGES_NEW.includes(item.href)}
-            className="relative items-center"
+            className={cn(
+              "relative items-center rounded-md px-2 py-1",
+              item.href === "/start-plan" &&
+                "border border-primary/50 bg-primary/10 font-semibold text-primary"
+            )}
           >
             {item.label}
           </Link>

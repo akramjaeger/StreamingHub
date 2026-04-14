@@ -41,6 +41,10 @@ export const siteConfig = {
       href: "/help",
       label: "Help",
     },
+    {
+      href: "/start-plan",
+      label: "Start Plan",
+    },
   ],
 }
 

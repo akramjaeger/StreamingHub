@@ -412,6 +412,10 @@ export function NavbarMediaSearch({ className }: { className?: string }) {
                   {watchlistMessage ? <p className="text-xs text-muted-foreground">{watchlistMessage}</p> : null}
 
                   <div className="flex flex-wrap items-center gap-3 pt-1">
+                    <Button asChild size="sm" variant="secondary">
+                      <a href="/start-plan">Start Plan</a>
+                    </Button>
+
                     {currentDetails.trailerUrl ? (
                       <Button asChild size="sm" variant="outline">
                         <a href={currentDetails.trailerUrl} target="_blank" rel="noreferrer">
