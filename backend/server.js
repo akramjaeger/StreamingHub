@@ -5,6 +5,7 @@ const cors = require("cors");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const User = require("./models/User");
+const Plan = require("./models/Plan");
 
 dotenv.config();
 
@@ -46,6 +47,15 @@ app.get("/api/health", (req, res) => {
     ok: true,
     message: "Backend and frontend are connected",
   });
+});
+
+app.get("/api/plans", async (req, res) => {
+  try {
+    const plans = await Plan.find({ active: true }).sort({ sortOrder: 1, createdAt: 1 });
+    return res.status(200).json({ plans: plans.map(planToResponse) });
+  } catch (error) {
+    return res.status(500).json({ message: "Server error", error: error.message });
+  }
 });
 
 function getAuthToken(req) {
@@ -118,6 +128,106 @@ const DEFAULT_USERS = [
     phone: "+1-555-0105",
   },
 ];
+
+const DEFAULT_PLANS = [
+  {
+    slug: "starter",
+    name: "Starter",
+    description: "Unlock movie details, cast, and where-to-watch providers.",
+    price: "$4.99/mo",
+    stripePriceId: process.env.STRIPE_PRICE_STARTER_ID || "",
+    features: ["Full title details", "Watch provider availability", "Watchlist access"],
+    sortOrder: 1,
+  },
+  {
+    slug: "plus",
+    name: "Plus",
+    description: "Everything in Starter plus priority data refresh and richer recommendations.",
+    price: "$9.99/mo",
+    stripePriceId: process.env.STRIPE_PRICE_PLUS_ID || "",
+    features: ["Everything in Starter", "Priority refresh", "Enhanced suggestions"],
+    sortOrder: 2,
+  },
+];
+
+function normalizePlanSlug(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function normalizePlanFeatures(value) {
+  if (Array.isArray(value)) {
+    return value.map((entry) => String(entry || "").trim()).filter(Boolean);
+  }
+
+  return String(value || "")
+    .split(/[\n,]/)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function planToResponse(plan) {
+  return {
+    id: plan.slug,
+    slug: plan.slug,
+    name: plan.name,
+    description: plan.description,
+    price: plan.price,
+    stripePriceId: plan.stripePriceId,
+    features: Array.isArray(plan.features) ? plan.features : [],
+    active: Boolean(plan.active),
+    sortOrder: Number(plan.sortOrder || 0),
+    createdAt: plan.createdAt,
+    updatedAt: plan.updatedAt,
+  };
+}
+
+async function resolveUniquePlanSlug(preferredSlug, existingId) {
+  const normalized = normalizePlanSlug(preferredSlug);
+  if (!normalized) {
+    return "";
+  }
+
+  const existing = await Plan.findOne({
+    slug: normalized,
+    ...(existingId ? { _id: { $ne: existingId } } : {}),
+  }).select("_id");
+
+  return existing ? "" : normalized;
+}
+
+async function ensureSeedPlans() {
+  const existingCount = await Plan.countDocuments();
+  if (existingCount > 0) {
+    return;
+  }
+
+  const plansToCreate = [];
+
+  for (const seedPlan of DEFAULT_PLANS) {
+    const slug = await resolveUniquePlanSlug(seedPlan.slug);
+    plansToCreate.push({
+      slug: slug || seedPlan.slug,
+      name: seedPlan.name,
+      description: seedPlan.description,
+      price: seedPlan.price,
+      stripePriceId: String(seedPlan.stripePriceId || "").trim(),
+      features: seedPlan.features,
+      active: true,
+      sortOrder: seedPlan.sortOrder,
+    });
+  }
+
+  if (!plansToCreate.length) {
+    return;
+  }
+
+  await Plan.insertMany(plansToCreate);
+  console.log(`Seeded ${plansToCreate.length} default plans`);
+}
 
 async function requireAdmin(req, res, next) {
   try {
@@ -574,6 +684,155 @@ app.delete("/api/admin/users/:id", requireAuth, requireAdmin, async (req, res) =
   }
 });
 
+app.get("/api/admin/plans", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const plans = await Plan.find({}).sort({ sortOrder: 1, createdAt: 1 });
+    return res.status(200).json({ plans: plans.map(planToResponse) });
+  } catch (error) {
+    return res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
+
+app.post("/api/admin/plans", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { slug, name, description, price, stripePriceId, features, active, sortOrder } = req.body;
+    const normalizedName = String(name || "").trim();
+    const normalizedDescription = String(description || "").trim();
+    const normalizedPrice = String(price || "").trim();
+    const normalizedStripePriceId = String(stripePriceId || "").trim();
+    const normalizedSlug = await resolveUniquePlanSlug(slug || normalizedName);
+
+    if (!normalizedSlug) {
+      return res.status(400).json({ message: "Plan ID is required and must be unique" });
+    }
+
+    if (normalizedName.length < 2) {
+      return res.status(400).json({ message: "Plan name must be at least 2 characters" });
+    }
+
+    if (normalizedDescription.length < 5) {
+      return res.status(400).json({ message: "Plan description is required" });
+    }
+
+    if (!normalizedPrice) {
+      return res.status(400).json({ message: "Plan price is required" });
+    }
+
+    const plan = await Plan.create({
+      slug: normalizedSlug,
+      name: normalizedName,
+      description: normalizedDescription,
+      price: normalizedPrice,
+      stripePriceId: normalizedStripePriceId,
+      features: normalizePlanFeatures(features),
+      active: typeof active === "boolean" ? active : true,
+      sortOrder: Number.isFinite(Number(sortOrder)) ? Number(sortOrder) : 0,
+    });
+
+    return res.status(201).json({
+      message: "Plan created successfully",
+      plan: planToResponse(plan),
+    });
+  } catch (error) {
+    if (error?.code === 11000) {
+      return res.status(409).json({ message: "Plan ID already exists" });
+    }
+
+    return res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
+
+app.patch("/api/admin/plans/:id", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const planId = String(req.params.id || "").trim();
+    const existingPlan = await Plan.findOne({ slug: planId });
+
+    if (!existingPlan) {
+      return res.status(404).json({ message: "Plan not found" });
+    }
+
+    const { slug, name, description, price, stripePriceId, features, active, sortOrder } = req.body;
+    const updates = {};
+
+    if (typeof slug !== "undefined") {
+      const normalizedSlug = await resolveUniquePlanSlug(slug, existingPlan._id);
+      if (!normalizedSlug) {
+        return res.status(409).json({ message: "Plan ID already exists" });
+      }
+      updates.slug = normalizedSlug;
+    }
+
+    if (typeof name !== "undefined") {
+      const normalizedName = String(name || "").trim();
+      if (normalizedName.length < 2) {
+        return res.status(400).json({ message: "Plan name must be at least 2 characters" });
+      }
+      updates.name = normalizedName;
+    }
+
+    if (typeof description !== "undefined") {
+      const normalizedDescription = String(description || "").trim();
+      if (normalizedDescription.length < 5) {
+        return res.status(400).json({ message: "Plan description is required" });
+      }
+      updates.description = normalizedDescription;
+    }
+
+    if (typeof price !== "undefined") {
+      const normalizedPrice = String(price || "").trim();
+      if (!normalizedPrice) {
+        return res.status(400).json({ message: "Plan price is required" });
+      }
+      updates.price = normalizedPrice;
+    }
+
+    if (typeof stripePriceId !== "undefined") {
+      const normalizedStripePriceId = String(stripePriceId || "").trim();
+      updates.stripePriceId = normalizedStripePriceId;
+    }
+
+    if (typeof features !== "undefined") {
+      updates.features = normalizePlanFeatures(features);
+    }
+
+    if (typeof active !== "undefined") {
+      updates.active = Boolean(active);
+    }
+
+    if (typeof sortOrder !== "undefined") {
+      const parsedSortOrder = Number(sortOrder);
+      updates.sortOrder = Number.isFinite(parsedSortOrder) ? parsedSortOrder : 0;
+    }
+
+    const updatedPlan = await Plan.findByIdAndUpdate(existingPlan._id, updates, {
+      returnDocument: "after",
+      runValidators: true,
+    });
+
+    return res.status(200).json({
+      message: "Plan updated successfully",
+      plan: planToResponse(updatedPlan),
+    });
+  } catch (error) {
+    return res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
+
+app.delete("/api/admin/plans/:id", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const planId = String(req.params.id || "").trim();
+    const deletedPlan = await Plan.findOneAndDelete({ slug: planId });
+
+    if (!deletedPlan) {
+      return res.status(404).json({ message: "Plan not found" });
+    }
+
+    return res.status(200).json({ message: "Plan deleted successfully" });
+  } catch (error) {
+    return res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
+
 async function startServer() {
   try {
     if (!MONGODB_URI) {
@@ -584,6 +843,7 @@ async function startServer() {
     console.log("MongoDB connected");
 
     await ensureSeedUsers();
+    await ensureSeedPlans();
 
     app.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`);

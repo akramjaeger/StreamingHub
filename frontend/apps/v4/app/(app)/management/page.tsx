@@ -11,6 +11,8 @@ import { ChartContainer, type ChartConfig, ChartTooltip, ChartTooltipContent } f
 import { Input } from "@/registry/new-york-v4/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/registry/new-york-v4/ui/table"
 
+import { ManagementPlansSection } from "./management-plans-section"
+
 type AdminState = "checking" | "allowed" | "denied"
 type ManagedUser = {
   id: string
@@ -571,6 +573,8 @@ export default function ManagementPage() {
             </CardContent>
           </Card>
         </section>
+
+        <ManagementPlansSection token={token} />
 
         <section className="rounded-3xl border bg-card p-6 shadow-sm md:p-8">
           <h3 className="text-xl font-semibold">Admin Notes</h3>

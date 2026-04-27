@@ -209,11 +209,40 @@ function getTmdbTrailerUrl(videosPayload: any, fallbackTitle: string) {
     return `https://www.youtube.com/watch?v=${youtubeKey}`
   }
 
-  if (!fallbackTitle.trim()) {
+  return ""
+}
+
+async function resolveYouTubeTrailerUrl(query: string) {
+  const normalizedQuery = String(query || "").trim()
+  if (!normalizedQuery) {
     return ""
   }
 
-  return `https://www.youtube.com/results?search_query=${encodeURIComponent(`${fallbackTitle} official trailer`)}`
+  try {
+    const response = await fetch(
+      `https://www.youtube.com/results?search_query=${encodeURIComponent(normalizedQuery)}`,
+      {
+        cache: "no-store",
+        headers: {
+          "user-agent": "Mozilla/5.0",
+        },
+      }
+    )
+
+    if (!response.ok) {
+      return ""
+    }
+
+    const html = await response.text()
+    const match = html.match(/"videoId":"([a-zA-Z0-9_-]{11})"/)
+    if (match?.[1]) {
+      return `https://www.youtube.com/watch?v=${match[1]}`
+    }
+  } catch {
+    // Ignore network and parsing failures and fall back to an empty trailer URL.
+  }
+
+  return ""
 }
 
 async function safeJson(url: string) {
@@ -339,7 +368,7 @@ async function buildFromTvMaze(params: {
     details,
     cast,
     watchProviders: providers,
-    trailerUrl: getTmdbTrailerUrl(null, title),
+    trailerUrl: await resolveYouTubeTrailerUrl(`${title} official trailer`),
     similarTitles,
   } satisfies DetailsResponse
 }
@@ -421,6 +450,8 @@ async function buildFromOmdb(params: {
     { label: "IMDb", value: String(omdb?.imdbRating || "N/A") },
   ]
 
+  const fallbackTrailerUrl = trailerUrl || (await resolveYouTubeTrailerUrl(`${title} official trailer`))
+
   return {
     id: params.itemId,
     title,
@@ -432,7 +463,7 @@ async function buildFromOmdb(params: {
     details,
     cast: uniqueStrings(String(omdb?.Actors || "").split(",").map((entry) => entry.trim()), 10),
     watchProviders: tmdbProviders,
-    trailerUrl: trailerUrl || getTmdbTrailerUrl(null, title),
+    trailerUrl: fallbackTrailerUrl,
     similarTitles,
   } satisfies DetailsResponse
 }
@@ -480,6 +511,8 @@ async function buildFromTmdb(params: {
     { label: "Language", value: String(payload.original_language || "Unknown").toUpperCase() },
   ]
 
+  const fallbackTrailerUrl = getTmdbTrailerUrl(payload.videos, title) || (await resolveYouTubeTrailerUrl(`${title} official trailer`))
+
   return {
     id: params.itemId,
     title,
@@ -491,7 +524,7 @@ async function buildFromTmdb(params: {
     details,
     cast: uniqueStrings((payload.credits?.cast || []).map((person: any) => person?.name), 10),
     watchProviders: mapTmdbProviders(payload["watch/providers"]),
-    trailerUrl: getTmdbTrailerUrl(payload.videos, title),
+    trailerUrl: fallbackTrailerUrl,
     similarTitles: mapTmdbSimilar(payload.similar?.results),
   } satisfies DetailsResponse
 }

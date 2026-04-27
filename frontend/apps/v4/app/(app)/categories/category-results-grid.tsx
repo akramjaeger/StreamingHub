@@ -13,6 +13,8 @@ import {
   DialogTitle,
 } from "@/registry/new-york-v4/ui/dialog"
 
+import { TrailerDialog } from "@/components/trailer-dialog"
+
 type CategoryResultItem = {
   id: string
   title: string
@@ -332,13 +334,7 @@ export function CategoryResultsGrid({ items }: { items: CategoryResultItem[] }) 
                       <a href="/start-plan">Start Plan</a>
                     </Button>
 
-                    {current.trailerUrl ? (
-                      <Button asChild size="sm" variant="outline">
-                        <a href={current.trailerUrl} target="_blank" rel="noreferrer">
-                          Watch Trailer
-                        </a>
-                      </Button>
-                    ) : null}
+                    <TrailerDialog title={current.title} trailerUrl={current.trailerUrl} />
 
                     <Button size="sm" onClick={addToWatchlist} disabled={isInWatchlist}>
                       {isInWatchlist ? "In Watchlist" : "Add to Watchlist"}

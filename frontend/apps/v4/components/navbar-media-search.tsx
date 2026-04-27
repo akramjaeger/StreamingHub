@@ -16,6 +16,8 @@ import {
 } from "@/registry/new-york-v4/ui/dialog"
 import { Input } from "@/registry/new-york-v4/ui/input"
 
+import { TrailerDialog } from "@/components/trailer-dialog"
+
 type SearchResult = {
   id: string
   title: string
@@ -416,13 +418,7 @@ export function NavbarMediaSearch({ className }: { className?: string }) {
                       <a href="/start-plan">Start Plan</a>
                     </Button>
 
-                    {currentDetails.trailerUrl ? (
-                      <Button asChild size="sm" variant="outline">
-                        <a href={currentDetails.trailerUrl} target="_blank" rel="noreferrer">
-                          Watch Trailer
-                        </a>
-                      </Button>
-                    ) : null}
+                    <TrailerDialog title={currentDetails.title} trailerUrl={currentDetails.trailerUrl} />
 
                     <Button size="sm" onClick={addToWatchlist} disabled={isInWatchlist}>
                       {isInWatchlist ? "In Watchlist" : "Add to Watchlist"}

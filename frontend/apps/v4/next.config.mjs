@@ -1,8 +1,6 @@
 import path from "path"
 import { createMDX } from "fumadocs-mdx/next"
 
-const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000"
-
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   devIndicators: false,
@@ -138,10 +136,6 @@ const nextConfig = {
   },
   rewrites() {
     return [
-      {
-        source: "/api/backend/:path*",
-        destination: `${backendUrl}/api/:path*`,
-      },
       {
         source: "/docs/:path*.md",
         destination: "/llm/:path*",

@@ -9,13 +9,23 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/reg
 
 const SUBSCRIPTION_STORAGE_KEY = "streamhub_subscription"
 
-const plans = [
+type Plan = {
+  id: string
+  name: string
+  price: string
+  description: string
+  features: string[]
+  stripePriceId: string
+}
+
+const fallbackPlans: Plan[] = [
   {
     id: "starter",
     name: "Starter",
     price: "$4.99/mo",
     description: "Unlock movie details, cast, and where-to-watch providers.",
     features: ["Full title details", "Watch provider availability", "Watchlist access"],
+    stripePriceId: "",
   },
   {
     id: "plus",
@@ -23,20 +33,46 @@ const plans = [
     price: "$9.99/mo",
     description: "Everything in Starter plus priority data refresh and richer recommendations.",
     features: ["Everything in Starter", "Priority refresh", "Enhanced suggestions"],
+    stripePriceId: "",
   },
-] as const
+]
 
 export function StartPlanClient() {
   const searchParams = useSearchParams()
-  const [loadingPlan, setLoadingPlan] = useState<"starter" | "plus" | null>(null)
+  const [plans, setPlans] = useState<Plan[]>(fallbackPlans)
+  const [isLoadingPlans, setIsLoadingPlans] = useState(false)
+  const [loadingPlan, setLoadingPlan] = useState<string | null>(null)
   const [requestError, setRequestError] = useState("")
   const [statusMessage, setStatusMessage] = useState("")
+
+  useEffect(() => {
+    async function loadPlans() {
+      setIsLoadingPlans(true)
+
+      try {
+        const response = await fetch("/api/backend/plans", { cache: "no-store" })
+        const data = (await response.json()) as { plans?: Plan[] }
+
+        if (response.ok && Array.isArray(data.plans) && data.plans.length > 0) {
+          setPlans(data.plans)
+        }
+      } catch {
+        setPlans(fallbackPlans)
+      } finally {
+        setIsLoadingPlans(false)
+      }
+    }
+
+    loadPlans()
+  }, [])
 
   useEffect(() => {
     const status = searchParams.get("status")
     const planId = searchParams.get("plan")
 
-    if (status === "success" && (planId === "starter" || planId === "plus")) {
+    if (status === "success" && planId) {
+      const matchingPlan = plans.find((plan) => plan.id === planId)
+
       localStorage.setItem(
         SUBSCRIPTION_STORAGE_KEY,
         JSON.stringify({
@@ -47,7 +83,7 @@ export function StartPlanClient() {
       )
 
       window.dispatchEvent(new Event("subscription-changed"))
-      setStatusMessage(`Payment complete. ${planId === "starter" ? "Starter" : "Plus"} plan is active.`)
+      setStatusMessage(`Payment complete. ${matchingPlan?.name || planId} plan is active.`)
       return
     }
 
@@ -57,9 +93,9 @@ export function StartPlanClient() {
     }
 
     setStatusMessage("")
-  }, [searchParams])
+  }, [plans, searchParams])
 
-  async function startStripeCheckout(planId: "starter" | "plus") {
+  async function startStripeCheckout(planId: string) {
     setRequestError("")
     setLoadingPlan(planId)
 
@@ -93,6 +129,7 @@ export function StartPlanClient() {
         <p className="max-w-2xl text-base text-muted-foreground md:text-lg">
           Pick a plan to unlock full movie details across Home, Categories, and Search.
         </p>
+        {isLoadingPlans ? <p className="text-sm text-muted-foreground">Loading latest plans...</p> : null}
       </section>
 
       <section className="grid gap-5 md:grid-cols-2">

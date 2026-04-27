@@ -2,12 +2,17 @@ import { NextResponse } from "next/server"
 import Stripe from "stripe"
 
 type CheckoutRequest = {
-  planId?: "starter" | "plus"
+  planId?: string
 }
 
 const PLAN_TO_PRICE_ENV: Record<"starter" | "plus", string> = {
   starter: "STRIPE_PRICE_STARTER_ID",
   plus: "STRIPE_PRICE_PLUS_ID",
+}
+
+type BackendPlan = {
+  id: string
+  stripePriceId?: string
 }
 
 function getBaseUrl(request: Request) {
@@ -38,14 +43,31 @@ export async function POST(request: Request) {
   }
 
   const planId = body.planId
-  if (!planId || !(planId in PLAN_TO_PRICE_ENV)) {
+  if (!planId) {
     return NextResponse.json({ message: "Invalid plan selected" }, { status: 400 })
   }
 
-  const priceEnvKey = PLAN_TO_PRICE_ENV[planId]
-  const priceId = process.env[priceEnvKey]
+  const priceEnvKey = planId in PLAN_TO_PRICE_ENV ? PLAN_TO_PRICE_ENV[planId as keyof typeof PLAN_TO_PRICE_ENV] : null
+  let priceId = priceEnvKey ? process.env[priceEnvKey] || "" : ""
+
   if (!priceId) {
-    return NextResponse.json({ message: `Missing ${priceEnvKey}` }, { status: 500 })
+    try {
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000"
+      const response = await fetch(`${backendUrl}/api/plans`, { cache: "no-store" })
+      const data = (await response.json()) as { plans?: BackendPlan[] }
+      const matchingPlan = (data.plans || []).find((plan) => plan.id === planId)
+      priceId = matchingPlan?.stripePriceId || ""
+    } catch {
+      priceId = ""
+    }
+  }
+  if (!priceId) {
+    return NextResponse.json(
+      {
+        message: priceEnvKey ? `Missing ${priceEnvKey}` : "Unable to resolve Stripe price for selected plan",
+      },
+      { status: 500 }
+    )
   }
 
   if (priceId === "price_xxx") {
