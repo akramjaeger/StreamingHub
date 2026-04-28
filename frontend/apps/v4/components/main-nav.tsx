@@ -5,6 +5,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 
 import { PAGES_NEW } from "@/lib/docs"
+import { getCurrentUserRole, type UserRole } from "@/lib/user-storage"
 import { cn } from "@/lib/utils"
 import { Button } from "@/registry/new-york-v4/ui/button"
 
@@ -16,34 +17,20 @@ export function MainNav({
   items: { href: string; label: string }[]
 }) {
   const pathname = usePathname()
-  const [isAdmin, setIsAdmin] = useState(false)
+  const [userRole, setUserRole] = useState<UserRole>("anonymous")
 
   useEffect(() => {
-    const syncAdminState = () => {
-      const rawUser = localStorage.getItem("auth_user")
-      if (!rawUser) {
-        setIsAdmin(false)
-        return
-      }
-
-      try {
-        const user = JSON.parse(rawUser) as { email?: string | null }
-        const normalizedEmail = String(user.email || "")
-          .trim()
-          .toLowerCase()
-        setIsAdmin(normalizedEmail === "admin@gmail.com")
-      } catch {
-        setIsAdmin(false)
-      }
+    const syncUserRole = () => {
+      setUserRole(getCurrentUserRole())
     }
 
-    syncAdminState()
-    window.addEventListener("storage", syncAdminState)
-    window.addEventListener("auth-changed", syncAdminState)
+    syncUserRole()
+    window.addEventListener("storage", syncUserRole)
+    window.addEventListener("auth-changed", syncUserRole)
 
     return () => {
-      window.removeEventListener("storage", syncAdminState)
-      window.removeEventListener("auth-changed", syncAdminState)
+      window.removeEventListener("storage", syncUserRole)
+      window.removeEventListener("auth-changed", syncUserRole)
     }
   }, [])
 
@@ -51,10 +38,11 @@ export function MainNav({
     () =>
       items.filter(
         (item) =>
-          (item.href !== "/management" || isAdmin) &&
-          (item.href !== "/watchlist" || !isAdmin)
+          (item.href !== "/management" || userRole === "admin") &&
+          (item.href !== "/watchlist" || userRole === "regular") &&
+          (item.href !== "/watch-history" || userRole === "regular")
       ),
-    [isAdmin, items]
+    [items, userRole]
   )
 
   return (

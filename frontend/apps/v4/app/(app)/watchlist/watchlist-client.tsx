@@ -1,99 +1,84 @@
 "use client"
 
 import * as React from "react"
+import Link from "next/link"
 
 import { Button } from "@/registry/new-york-v4/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/registry/new-york-v4/ui/card"
 
 import { CategoryResultsGrid } from "@/app/(app)/categories/category-results-grid"
 
-type WatchlistItem = {
-  id: string
-  title: string
-  year: string
-  poster: string
-  addedAt: string
-}
-
-const WATCHLIST_STORAGE_KEY = "streamhub_watchlist"
-
-function normalizeEmail(value: string | null | undefined) {
-  return String(value || "")
-    .trim()
-    .toLowerCase()
-}
-
-function getCurrentUserWatchlistKey() {
-  try {
-    const raw = localStorage.getItem("auth_user")
-    if (!raw) {
-      return WATCHLIST_STORAGE_KEY
-    }
-
-    const parsed = JSON.parse(raw) as { email?: string | null }
-    const email = normalizeEmail(parsed?.email)
-    if (!email) {
-      return WATCHLIST_STORAGE_KEY
-    }
-
-    return `${WATCHLIST_STORAGE_KEY}:${email}`
-  } catch {
-    return WATCHLIST_STORAGE_KEY
-  }
-}
+import {
+  clearCurrentUserWatchlist,
+  getCurrentUserRole,
+  loadCurrentUserWatchlist,
+  type UserRole,
+  type WatchlistEntry,
+} from "@/lib/user-storage"
 
 export function WatchlistClient() {
-  const [items, setItems] = React.useState<WatchlistItem[]>([])
-  const [storageKey, setStorageKey] = React.useState(WATCHLIST_STORAGE_KEY)
+  const [items, setItems] = React.useState<WatchlistEntry[]>([])
+  const [userRole, setUserRole] = React.useState<UserRole>("anonymous")
 
-  const loadWatchlist = React.useCallback((key: string) => {
-    try {
-      const raw = localStorage.getItem(key)
-      const legacyRaw = key === WATCHLIST_STORAGE_KEY ? null : localStorage.getItem(WATCHLIST_STORAGE_KEY)
-      const source = raw || legacyRaw
+  React.useEffect(() => {
+    const syncWatchlistState = () => {
+      const role = getCurrentUserRole()
+      setUserRole(role)
+      setItems(role === "regular" ? loadCurrentUserWatchlist() : [])
+    }
 
-      if (!source) {
-        setItems([])
-        return
-      }
+    syncWatchlistState()
+    window.addEventListener("storage", syncWatchlistState)
+    window.addEventListener("auth-changed", syncWatchlistState)
 
-      const parsed = JSON.parse(source) as WatchlistItem[]
-      if (!Array.isArray(parsed)) {
-        setItems([])
-        return
-      }
-
-      const sorted = [...parsed].sort((a, b) => {
-        const aTime = new Date(a.addedAt).getTime()
-        const bTime = new Date(b.addedAt).getTime()
-        return bTime - aTime
-      })
-
-      setItems(sorted)
-    } catch {
-      setItems([])
+    return () => {
+      window.removeEventListener("storage", syncWatchlistState)
+      window.removeEventListener("auth-changed", syncWatchlistState)
     }
   }, [])
 
-  React.useEffect(() => {
-    const key = getCurrentUserWatchlistKey()
-    setStorageKey(key)
-    loadWatchlist(key)
-  }, [loadWatchlist])
+  const sortedItems = React.useMemo(
+    () =>
+      [...items].sort((a, b) => {
+        const aTime = new Date(a.addedAt).getTime()
+        const bTime = new Date(b.addedAt).getTime()
+        return bTime - aTime
+      }),
+    [items]
+  )
 
   function clearWatchlist() {
-    localStorage.setItem(storageKey, JSON.stringify([]))
+    if (!clearCurrentUserWatchlist()) {
+      return
+    }
+
     setItems([])
   }
 
-  if (!items.length) {
+  if (userRole === "anonymous" || userRole === "admin") {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Watchlist is for regular users</CardTitle>
+          <CardDescription>
+            Sign in with a regular account to use your personal watchlist.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button asChild>
+            <Link href="/sign-in">Sign in</Link>
+          </Button>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  if (!sortedItems.length) {
     return (
       <Card>
         <CardHeader>
           <CardTitle>No titles in your watchlist</CardTitle>
-          <CardDescription>
-            Open a movie or show details and click Add to Watchlist.
-          </CardDescription>
+          <CardDescription>Open a movie or show details and add it to your watchlist.</CardDescription>
         </CardHeader>
       </Card>
     )
@@ -103,7 +88,7 @@ export function WatchlistClient() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
-          {items.length} saved title{items.length === 1 ? "" : "s"}
+          {sortedItems.length} saved title{sortedItems.length === 1 ? "" : "s"}
         </p>
         <Button variant="outline" onClick={clearWatchlist}>
           Clear Watchlist
@@ -111,7 +96,7 @@ export function WatchlistClient() {
       </div>
 
       <CategoryResultsGrid
-        items={items.map((item) => ({
+        items={sortedItems.map((item) => ({
           id: item.id,
           title: item.title,
           year: item.year,

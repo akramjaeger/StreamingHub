@@ -34,6 +34,10 @@ export const siteConfig = {
       label: "Watchlist",
     },
     {
+      href: "/watch-history",
+      label: "Watch History",
+    },
+    {
       href: "/management",
       label: "Management",
     },

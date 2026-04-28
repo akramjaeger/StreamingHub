@@ -21,6 +21,12 @@ import {
 } from "@/registry/new-york-v4/ui/dialog"
 
 import { TrailerDialog } from "@/components/trailer-dialog"
+import {
+  getCurrentUserRole,
+  loadCurrentUserWatchlist,
+  saveCurrentUserWatchlistItem,
+  type UserRole,
+} from "@/lib/user-storage"
 
 type SectionItem = {
   id: number
@@ -42,41 +48,6 @@ type TitleDetails = {
   watchProviders: Array<{ name: string; logo: string; type: "stream" | "rent" | "buy" }>
   trailerUrl: string
   similarTitles: Array<{ id: string; title: string; year: string; poster: string }>
-}
-
-type WatchlistItem = {
-  id: string
-  title: string
-  year: string
-  poster: string
-  addedAt: string
-}
-
-const WATCHLIST_STORAGE_KEY = "streamhub_watchlist"
-
-function normalizeEmail(value: string | null | undefined) {
-  return String(value || "")
-    .trim()
-    .toLowerCase()
-}
-
-function getCurrentUserWatchlistKey() {
-  try {
-    const raw = localStorage.getItem("auth_user")
-    if (!raw) {
-      return WATCHLIST_STORAGE_KEY
-    }
-
-    const parsed = JSON.parse(raw) as { email?: string | null }
-    const email = normalizeEmail(parsed?.email)
-    if (!email) {
-      return WATCHLIST_STORAGE_KEY
-    }
-
-    return `${WATCHLIST_STORAGE_KEY}:${email}`
-  } catch {
-    return WATCHLIST_STORAGE_KEY
-  }
 }
 
 export type HomeSectionsData = {
@@ -204,35 +175,24 @@ export function HomeMediaSections({ sections }: { sections: HomeSectionsData }) 
   const [detailsError, setDetailsError] = React.useState("")
   const [watchlistIds, setWatchlistIds] = React.useState<string[]>([])
   const [watchlistMessage, setWatchlistMessage] = React.useState("")
-  const [watchlistStorageKey, setWatchlistStorageKey] = React.useState(WATCHLIST_STORAGE_KEY)
+  const [userRole, setUserRole] = React.useState<UserRole>("anonymous")
 
   React.useEffect(() => {
-    setWatchlistStorageKey(getCurrentUserWatchlistKey())
-  }, [])
-
-  React.useEffect(() => {
-    try {
-      const raw = localStorage.getItem(watchlistStorageKey)
-      const legacyRaw =
-        watchlistStorageKey === WATCHLIST_STORAGE_KEY ? null : localStorage.getItem(WATCHLIST_STORAGE_KEY)
-      const source = raw || legacyRaw
-
-      if (!source) {
-        setWatchlistIds([])
-        return
-      }
-
-      const parsed = JSON.parse(source) as WatchlistItem[]
-      if (!Array.isArray(parsed)) {
-        setWatchlistIds([])
-        return
-      }
-
-      setWatchlistIds(parsed.map((entry) => entry.id))
-    } catch {
-      setWatchlistIds([])
+    const syncUserState = () => {
+      const role = getCurrentUserRole()
+      setUserRole(role)
+      setWatchlistIds(role === "regular" ? loadCurrentUserWatchlist().map((entry) => entry.id) : [])
     }
-  }, [watchlistStorageKey])
+
+    syncUserState()
+    window.addEventListener("storage", syncUserState)
+    window.addEventListener("auth-changed", syncUserState)
+
+    return () => {
+      window.removeEventListener("storage", syncUserState)
+      window.removeEventListener("auth-changed", syncUserState)
+    }
+  }, [])
 
   async function openDetails(item: SectionItem) {
     setSelectedItem(item)
@@ -288,37 +248,23 @@ export function HomeMediaSections({ sections }: { sections: HomeSectionsData }) 
   const buyProviders = (current?.watchProviders || []).filter((provider) => provider.type === "buy")
 
   function addToWatchlist() {
-    if (!current) {
+    if (!current || userRole !== "regular") {
+      setWatchlistMessage("Sign in with a regular account to use Watchlist")
       return
     }
 
-    try {
-      const raw = localStorage.getItem(watchlistStorageKey)
-      const existing = raw ? (JSON.parse(raw) as WatchlistItem[]) : []
-      const safeExisting = Array.isArray(existing) ? existing : []
-
-      if (safeExisting.some((entry) => entry.id === current.id)) {
-        setWatchlistMessage("Already in watchlist")
-        return
-      }
-
-      const next: WatchlistItem[] = [
-        {
-          id: current.id,
-          title: current.title,
-          year: current.year,
-          poster: current.poster,
-          addedAt: new Date().toISOString(),
-        },
-        ...safeExisting,
-      ].slice(0, 300)
-
-      localStorage.setItem(watchlistStorageKey, JSON.stringify(next))
-      setWatchlistIds(next.map((entry) => entry.id))
-      setWatchlistMessage("Added to watchlist")
-    } catch {
-      setWatchlistMessage("Could not update watchlist")
+    if (watchlistIds.includes(current.id)) {
+      setWatchlistMessage("Already in watchlist")
+      return
     }
+
+    if (saveCurrentUserWatchlistItem(current)) {
+      setWatchlistIds(loadCurrentUserWatchlist().map((entry) => entry.id))
+      setWatchlistMessage("Added to watchlist")
+      return
+    }
+
+    setWatchlistMessage("Could not update watchlist")
   }
 
   return (
@@ -426,11 +372,22 @@ export function HomeMediaSections({ sections }: { sections: HomeSectionsData }) 
                       <a href="/start-plan">Start Plan</a>
                     </Button>
 
-                    <TrailerDialog title={current.title} trailerUrl={current.trailerUrl} />
+                    <TrailerDialog
+                      title={current.title}
+                      trailerUrl={current.trailerUrl}
+                      historyItem={{
+                        id: current.id,
+                        title: current.title,
+                        year: current.year,
+                        poster: current.poster,
+                      }}
+                    />
 
-                    <Button size="sm" onClick={addToWatchlist} disabled={isInWatchlist}>
-                      {isInWatchlist ? "In Watchlist" : "Add to Watchlist"}
-                    </Button>
+                    {userRole === "regular" ? (
+                      <Button size="sm" onClick={addToWatchlist} disabled={isInWatchlist}>
+                        {isInWatchlist ? "In Watchlist" : "Add to Watchlist"}
+                      </Button>
+                    ) : null}
                   </div>
                 </div>
               </div>

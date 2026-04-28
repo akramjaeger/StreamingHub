@@ -11,6 +11,8 @@ import {
   DialogTitle,
 } from "@/registry/new-york-v4/ui/dialog"
 
+import { saveCurrentUserWatchHistoryItem, type MediaIdentity } from "@/lib/user-storage"
+
 function getYoutubeEmbedUrl(trailerUrl: string) {
   const url = trailerUrl.trim()
   if (!url) {
@@ -52,14 +54,24 @@ function getYoutubeEmbedUrl(trailerUrl: string) {
 export function TrailerDialog({
   title,
   trailerUrl,
+  historyItem,
   buttonLabel = "Watch Trailer",
 }: {
   title: string
   trailerUrl: string
+  historyItem?: MediaIdentity
   buttonLabel?: string
 }) {
   const [open, setOpen] = React.useState(false)
   const embedUrl = React.useMemo(() => getYoutubeEmbedUrl(trailerUrl), [trailerUrl])
+
+  function handleOpenTrailer() {
+    if (historyItem) {
+      saveCurrentUserWatchHistoryItem(historyItem)
+    }
+
+    setOpen(true)
+  }
 
   if (!trailerUrl) {
     return null
@@ -67,7 +79,7 @@ export function TrailerDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
+      <Button size="sm" variant="outline" onClick={handleOpenTrailer}>
         {buttonLabel}
       </Button>
 

@@ -7,6 +7,7 @@ import { usePathname, useRouter } from "next/navigation"
 import { PAGES_NEW } from "@/lib/docs"
 import { showMcpDocs } from "@/lib/flags"
 import { getCurrentBase, getPagesFromFolder } from "@/lib/page-tree"
+import { getCurrentUserRole, type UserRole } from "@/lib/user-storage"
 import { type source } from "@/lib/source"
 import { cn } from "@/lib/utils"
 import { Button } from "@/registry/new-york-v4/ui/button"
@@ -70,36 +71,22 @@ export function MobileNav({
   className?: string
 }) {
   const [open, setOpen] = React.useState(false)
-  const [isAdmin, setIsAdmin] = React.useState(false)
+  const [userRole, setUserRole] = React.useState<UserRole>("anonymous")
   const pathname = usePathname()
   const currentBase = getCurrentBase(pathname)
 
   React.useEffect(() => {
-    const syncAdminState = () => {
-      const rawUser = localStorage.getItem("auth_user")
-      if (!rawUser) {
-        setIsAdmin(false)
-        return
-      }
-
-      try {
-        const user = JSON.parse(rawUser) as { email?: string | null }
-        const normalizedEmail = String(user.email || "")
-          .trim()
-          .toLowerCase()
-        setIsAdmin(normalizedEmail === "admin@gmail.com")
-      } catch {
-        setIsAdmin(false)
-      }
+    const syncUserRole = () => {
+      setUserRole(getCurrentUserRole())
     }
 
-    syncAdminState()
-    window.addEventListener("storage", syncAdminState)
-    window.addEventListener("auth-changed", syncAdminState)
+    syncUserRole()
+    window.addEventListener("storage", syncUserRole)
+    window.addEventListener("auth-changed", syncUserRole)
 
     return () => {
-      window.removeEventListener("storage", syncAdminState)
-      window.removeEventListener("auth-changed", syncAdminState)
+      window.removeEventListener("storage", syncUserRole)
+      window.removeEventListener("auth-changed", syncUserRole)
     }
   }, [])
 
@@ -107,10 +94,11 @@ export function MobileNav({
     () =>
       items.filter(
         (item) =>
-          (item.href !== "/management" || isAdmin) &&
-          (item.href !== "/watchlist" || !isAdmin)
+          (item.href !== "/management" || userRole === "admin") &&
+          (item.href !== "/watchlist" || userRole === "regular") &&
+          (item.href !== "/watch-history" || userRole === "regular")
       ),
-    [isAdmin, items]
+    [items, userRole]
   )
 
   return (
